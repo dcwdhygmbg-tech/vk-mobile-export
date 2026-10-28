@@ -1,381 +1,144 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Music Finder — поиск и скачивание</title>
+<title>Music Finder — оригиналы</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-*{box-sizing:border-box}
-body{margin:0;padding:20px 14px;background:#111318;color:#f1f3f5;font:16px -apple-system,BlinkMacSystemFont,sans-serif}
-main{max-width:720px;margin:auto}
+:root{color-scheme:dark}
+body{margin:0;padding:18px;background:#101114;color:#f4f4f5;
+font:16px -apple-system,BlinkMacSystemFont,sans-serif}
+main{max-width:760px;margin:auto}
 h1{font-size:25px}
-p{color:#b5bac5;line-height:1.5}
-.panel{background:#1b1f28;border:1px solid #343a47;border-radius:14px;padding:14px;margin:14px 0}
-input,textarea,button{width:100%;font:inherit;border-radius:10px;padding:13px;margin:7px 0}
-input,textarea{background:#101319;color:white;border:1px solid #454c5b}
-textarea{min-height:180px}
-button{border:0;background:#5181b8;color:white;font-weight:650}
-button.secondary{background:#343b49}
-button:disabled{opacity:.45}
-progress{width:100%;height:16px}
-a{color:#9ccaff;overflow-wrap:anywhere}
-.track{border-top:1px solid #383e4a;padding:12px 0}
-.small{font-size:13px}
-#status{white-space:pre-wrap}
+p{color:#b9bbc5;line-height:1.5}
+.panel{background:#1c1d23;border:1px solid #343640;
+border-radius:15px;padding:15px;margin:14px 0}
+button,.btn{display:inline-block;background:#7464ed;color:white;
+border:0;border-radius:10px;padding:12px 14px;margin:5px 3px;
+font-size:15px;text-decoration:none;cursor:pointer}
+button:disabled{opacity:.4}
+input,textarea,select{box-sizing:border-box;width:100%;margin:8px 0;
+padding:12px;background:#111217;color:white;border:1px solid #454650;
+border-radius:9px;font-size:16px}
+textarea{min-height:130px}
+.small{font-size:13px;color:#a9aab5}
+.status{white-space:pre-wrap;overflow-wrap:anywhere}
+.track{border-top:1px solid #383942;padding:12px 0}
+.track strong{display:block;margin-bottom:6px}
+.tag{font-size:12px;color:#c4baff}
 </style>
 </head>
 <body>
 <main>
-<h1>🎵 Music Finder</h1>
-<p>Загрузи TXT со списком песен. Сайт ищет совпадения в Internet Archive и позволяет открывать найденные материалы. Доступные аудиофайлы можно добавлять в ZIP.</p>
+<h1>🎧 Music Finder</h1>
+<p>Обработка списка песен на iPhone. Поиск оригинальных версий,
+проверка совпадений и сборка ZIP из разрешённых аудиофайлов.</p>
 
 <div class="panel">
-<label for="file">1. Выбери TXT-файл</label>
+<h3>1. Список песен</h3>
 <input id="file" type="file" accept=".txt,text/plain">
-
-<label for="list">Или вставь список вручную</label>
-<textarea id="list" placeholder="EMIN, JONY - Камин&#10;Кино — Группа крови"></textarea>
-
-<button id="start">Начать поиск</button>
+<textarea id="songs" placeholder="EMIN, JONY — Камин&#10;Miyagi — Captain"></textarea>
+<button id="load">Загрузить TXT</button>
+<button id="start">Обработать список</button>
+<div id="status" class="status small">Ожидаю список песен.</div>
 </div>
 
 <div class="panel">
-<div id="status">Ожидаю список песен.</div>
-<progress id="progress" value="0" max="1"></progress>
-<div id="current"></div>
+<h3>2. Результаты поиска</h3>
+<p class="small">Поиск открывается отдельно. Проверяй исполнителя,
+название и наличие Explicit/Uncensored или пометки о цензуре.
+Автоматически подтверждать оригинальность по одному названию нельзя.</p>
 <div id="results"></div>
-<button id="next" class="secondary" disabled>Следующая песня</button>
-<button id="zip" disabled>Скачать ZIP выбранных файлов</button>
-<button id="report" class="secondary" disabled>Скачать отчёт CSV</button>
 </div>
 
-<p class="small">Поиск не гарантирует нахождение оригинала. Проверяй название и исполнителя. Скачивай только файлы, которые разрешено сохранять.</p>
+<div class="panel">
+<h3>3. ZIP</h3>
+<p class="small">Можно добавить аудиофайлы, которые ты уже скачал
+и вправе архивировать. Выбор файла на iPhone выполняется вручную.</p>
+<input id="audio" type="file" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus" multiple>
+<button id="zip">Создать ZIP из выбранных файлов</button>
+<div id="zipstatus" class="small"></div>
+</div>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-const $ = id => document.getElementById(id);
-let queue = [], index = 0, chosen = [], report = [], busy = false;
+const $=id=>document.getElementById(id);
+let tracks=[];
+let current=0;
 
-$("file").addEventListener("change", async e => {
-  const file = e.target.files[0];
-  if (file) $("list").value = await file.text();
-});
-
-function cleanName(s) {
-  return String(s || "").replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-}
-
-function setStatus(s) {
-  $("status").textContent = s;
-}
-
-$("start").onclick = () => {
-  const lines = $("list").value.split(/\r?\n/)
-    .map(s => s.trim().replace(/^\d+[.)\s-]+/, ""))
-    .filter(Boolean);
-
-  if (!lines.length) {
-    setStatus("Сначала загрузи TXT или вставь список песен.");
-    return;
-  }
-
-  queue = lines.map((name, i) => ({name, i}));
-  index = 0;
-  chosen = [];
-  report = [];
-  $("results").innerHTML = "";
-  $("zip").disabled = true;
-  $("report").disabled = true;
-  $("next").disabled = false;
-  processCurrent();
+$("load").onclick=async()=>{
+ const f=$("file").files[0];
+ if(!f){$("status").textContent="Сначала выбери TXT-файл.";return;}
+ $("songs").value=await f.text();
+ $("status").textContent="TXT загружен.";
 };
 
-async function processCurrent() {
-  $("results").innerHTML = "";
-  $("current").textContent = "";
-
-  if (index >= queue.length) {
-    $("progress").value = queue.length;
-    setStatus("Поиск завершён. Обработано песен: " +
-      queue.length + ". Добавлено в ZIP: " + chosen.length + ".");
-    $("next").disabled = true;
-    $("zip").disabled = !chosen.length;
-    $("report").disabled = !report.length;
-    return;
-  }
-
-  const item = queue[index];
-  $("progress").max = queue.length;
-  $("progress").value = index;
-  setStatus("Ищем " + (index + 1) + " из " +
-    queue.length + ": " + item.name);
-  $("current").textContent = "Ищем: " + item.name;
-  $("next").disabled = true;
-
-  try {
-    const normalized = item.name
-      .replace(/[–—]/g, "-")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const parts = normalized.split(/\s+-\s+|,\s*/);
-    const title = parts.length > 1
-      ? parts[parts.length - 1] : normalized;
-    const artist = parts.length > 1
-      ? parts.slice(0, -1).join(" ") : "";
-
-    const queries = [
-      'title:(' + title + ') AND mediatype:audio',
-      normalized + ' AND mediatype:audio',
-      title + ' AND mediatype:audio'
-    ];
-
-    if (artist) {
-      queries.push('creator:(' + artist + ') AND mediatype:audio');
-    }
-
-    const found = new Map();
-
-    for (const query of queries) {
-      try {
-        const url =
-          "https://archive.org/advancedsearch.php?q=" +
-          encodeURIComponent(query) +
-          "&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=licenseurl" +
-          "&rows=10&page=1&output=json";
-
-        const response = await fetch(url);
-        if (!response.ok) continue;
-
-        const data = await response.json();
-        for (const doc of data.response?.docs || []) {
-          if (doc.identifier) found.set(doc.identifier, doc);
-        }
-
-        if (found.size >= 10) break;
-      } catch (e) {
-        // Пробуем следующий поисковый запрос.
-      }
-    }
-
-    const docs = [...found.values()];
-
-    if (!docs.length) {
-      report.push({
-        track:item.name,
-        status:"Совпадений не найдено",
-        link:"https://archive.org/search?query=" +
-          encodeURIComponent(item.name)
-      });
-      setStatus("Совпадений не найдено. Можно перейти к следующей песне.");
-    } else {
-      docs.forEach(doc => showCandidate(item.name, doc));
-      report.push({
-        track:item.name,
-        status:"Найдены варианты",
-        link:"https://archive.org/search?query=" +
-          encodeURIComponent(item.name)
-      });
-      setStatus("Найдено вариантов: " + docs.length +
-        ". Выбери подходящий результат.");
-    }
-  } catch (error) {
-    report.push({
-      track:item.name,
-      status:"Ошибка поиска: " + error.message,
-      link:""
-    });
-    setStatus("Ошибка поиска. Проверь интернет и попробуй ещё раз.");
-  }
-
-  $("next").disabled = false;
-}
-
-function showCandidate(original, doc) {
-  const card = document.createElement("div");
-  card.className = "track";
-
-  const title = document.createElement("p");
-  const creator = Array.isArray(doc.creator)
-    ? doc.creator.join(", ")
-    : (doc.creator || "Исполнитель не указан");
-
-  title.textContent = (doc.title || doc.identifier) + " — " + creator;
-  card.appendChild(title);
-
-  const link = document.createElement("a");
-  link.href = "https://archive.org/details/" +
-    encodeURIComponent(doc.identifier);
-  link.target = "_blank";
-  link.rel = "noopener";
-  link.textContent = "Открыть страницу аудио";
-  card.appendChild(link);
-
-  const button = document.createElement("button");
-  button.textContent = "Скачать / открыть аудио";
-  button.onclick = () => {
-    window.open(link.href, "_blank", "noopener");
-  };
-  card.appendChild(button);
-
-  const add = document.createElement("button");
-  add.className = "secondary";
-  add.textContent = "Добавить аудиофайл в ZIP";
-  add.onclick = () => addCandidate(original, doc, add);
-  card.appendChild(add);
-
-  $("results").appendChild(card);
-}
-
-async function addCandidate(original, doc, button) {
-  if (busy) return;
-  if (chosen.length >= 30) {
-    setStatus("В одной партии можно собрать до 30 файлов. Скачай ZIP и начни новую партию.");
-    return;
-  }
-
-  busy = true;
-  button.disabled = true;
-  button.textContent = "Проверяю файлы…";
-
-  try {
-    const response = await fetch(
-      "https://archive.org/metadata/" +
-      encodeURIComponent(doc.identifier)
-    );
-    if (!response.ok) throw new Error("Не удалось получить метаданные");
-
-    const meta = await response.json();
-    const files = (meta.files || []).filter(f =>
-      /\.(mp3|ogg|flac|wav|m4a|opus)$/i.test(f.name || "") &&
-      !f.name.includes("_meta.xml")
-    );
-
-    if (!files.length) throw new Error("Аудиофайл не найден");
-
-    const file = files.sort((a,b) =>
-      (Number(a.size)||0) - (Number(b.size)||0)
-    )[0];
-
-    chosen.push({
-      original,
-      identifier:doc.identifier,
-      file:file.name
-    });
-
-    report.push({
-      track:original,
-      status:"Добавлено в ZIP; проверь условия использования",
-      link:"https://archive.org/details/" + doc.identifier
-    });
-
-    button.textContent = "Добавлено ✓";
-    setStatus("Добавлено в ZIP: " + original +
-      ". Всего файлов: " + chosen.length);
-    $("zip").disabled = false;
-    $("report").disabled = false;
-  } catch (error) {
-    button.disabled = false;
-    button.textContent = "Повторить добавление";
-    setStatus(error.message);
-  } finally {
-    busy = false;
-  }
-}
-
-$("next").onclick = () => {
-  index++;
-  processCurrent();
+$("start").onclick=()=>{
+ tracks=$("songs").value.split(/\r?\n/)
+ .map(s=>s.trim()).filter(Boolean)
+ .map((name,i)=>({name,i}));
+ current=0;
+ render();
+ $("status").textContent=`В списке песен: ${tracks.length}`;
+ if(!tracks.length)$("status").textContent="Список пуст.";
 };
 
-$("zip").onclick = async () => {
-  if (!chosen.length || busy) return;
+function searchLinks(name){
+ const q=encodeURIComponent(name);
+ return [
+  {label:"Поиск в VK",url:"https://vk.com/search?c[q]="+q+"&c[section]=audio"},
+  {label:"Поиск в интернете",url:"https://www.google.com/search?q="+q+"+original+explicit+audio"},
+  {label:"Поиск на Zaycev",url:"https://zaycev.net/search.html?query="+q}
+ ];
+}
 
-  if (!window.JSZip) {
-    setStatus("Не загрузился модуль ZIP. Проверь соединение.");
-    return;
-  }
+function render(){
+ const root=$("results");
+ root.innerHTML="";
+ if(!tracks.length){root.textContent="Загрузи список и нажми «Обработать список».";return;}
+ tracks.forEach((t,i)=>{
+  const div=document.createElement("div");
+  div.className="track";
+  const title=document.createElement("strong");
+  title.textContent=(i+1)+". "+t.name;
+  div.appendChild(title);
+  const tag=document.createElement("div");
+  tag.className="tag";
+  tag.textContent="Статус: требуется проверка версии";
+  div.appendChild(tag);
+  searchLinks(t.name).forEach(link=>{
+   const a=document.createElement("a");
+   a.className="btn";a.textContent=link.label;
+   a.href=link.url;a.target="_blank";a.rel="noopener noreferrer";
+   div.appendChild(a);
+  });
+  root.appendChild(div);
+ });
+}
 
-  busy = true;
-  $("zip").disabled = true;
-  const zip = new JSZip();
-  let downloaded = 0;
-
-  for (let i = 0; i < chosen.length; i++) {
-    const item = chosen[i];
-    setStatus("Скачиваю " + (i + 1) + " из " +
-      chosen.length + ": " + item.original);
-
-    try {
-      const url = "https://archive.org/download/" +
-        encodeURIComponent(item.identifier) + "/" +
-        item.file.split("/").map(encodeURIComponent).join("/");
-
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("HTTP " + response.status);
-
-      zip.file(
-        String(i + 1).padStart(2, "0") + " - " +
-        cleanName(item.original) + " - " + cleanName(item.file),
-        await response.blob()
-      );
-      downloaded++;
-    } catch (error) {
-      report.push({
-        track:item.original,
-        status:"Не удалось скачать: " + error.message,
-        link:"https://archive.org/details/" + item.identifier
-      });
-    }
-  }
-
-  try {
-    if (!downloaded) {
-      throw new Error("Не удалось скачать ни одного файла в браузер");
-    }
-
-    setStatus("Создаю ZIP…");
-    const blob = await zip.generateAsync({type:"blob"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "music-batch.zip";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-
-    setStatus("ZIP подготовлен. Файлов: " + downloaded +
-      " из " + chosen.length + ". Проверь папку «Загрузки» в «Файлах».");
-  } catch (error) {
-    setStatus("Ошибка ZIP: " + error.message);
-  } finally {
-    busy = false;
-    $("zip").disabled = !chosen.length;
-  }
-};
-
-$("report").onclick = () => {
-  const rows = [
-    ["Песня","Статус","Ссылка"],
-    ...report.map(x => [x.track,x.status,x.link])
-  ];
-
-  const csv = "\uFEFF" + rows.map(row =>
-    row.map(v => '"' + String(v || "").replace(/"/g,'""') + '"').join(";")
-  ).join("\r\n");
-
-  const url = URL.createObjectURL(
-    new Blob([csv],{type:"text/csv;charset=utf-8"})
-  );
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "music-report.csv";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
+$("zip").onclick=async()=>{
+ const files=[...$("audio").files];
+ if(!files.length){$("zipstatus").textContent="Сначала выбери скачанные аудиофайлы.";return;}
+ if(!window.JSZip){$("zipstatus").textContent="Не удалось загрузить ZIP-библиотеку. Проверь интернет.";return;}
+ $("zipstatus").textContent="Создаю архив…";
+ try{
+  const zip=new JSZip();
+  files.forEach((f,i)=>{
+   const safe=f.name.replace(/[\\/:*?"<>|]/g,"_");
+   zip.file(String(i+1).padStart(3,"0")+" - "+safe,f);
+  });
+  const blob=await zip.generateAsync({type:"blob"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="music-collection.zip";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  $("zipstatus").textContent=`Готово: ${files.length} файлов в ZIP.`;
+ }catch(e){
+  $("zipstatus").textContent="Ошибка создания ZIP: "+e.message;
+ }
 };
 </script>
 </body>
