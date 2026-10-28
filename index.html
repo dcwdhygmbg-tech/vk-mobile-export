@@ -4,99 +4,86 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Music TXT → ZIP</title>
+<title>Music TXT to ZIP</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-body{background:#111217;color:#f5f5f7;font:16px -apple-system,sans-serif;
-padding:16px;margin:0}
-main{max-width:760px;margin:auto}
-textarea,input{width:100%;box-sizing:border-box;padding:12px;margin:8px 0;
-background:#202127;color:white;border:1px solid #454650;border-radius:10px}
-textarea{min-height:180px}
-button{background:#7667ee;color:white;border:0;border-radius:9px;
-padding:12px;margin:4px 3px}
-.card{border-top:1px solid #454650;padding:12px 0}
-a{color:#b9b0ff;overflow-wrap:anywhere}
-small{color:#b9bac5}
+body{background:#111217;color:#eee;font:16px -apple-system,sans-serif;padding:16px}
+main{max-width:720px;margin:auto}
+button,input{padding:12px;margin:6px 0;border-radius:9px}
+button{background:#7467e8;color:white;border:0}
+.item{padding:12px 0;border-bottom:1px solid #444}
+small{color:#bbb}
 </style>
 </head>
 <body>
 <main>
 <h2>🎵 Music TXT → ZIP</h2>
-<p>Вставь список песен — по одной на строку.</p>
-<textarea id="list" placeholder="EMIN, JONY - Камин&#10;JONY - Комета"></textarea>
+<p>Загрузи TXT: исполнитель и название на каждой строке.</p>
+<input id="file" type="file" accept=".txt,text/plain">
 <button id="search">Начать поиск</button>
-<button id="zip" disabled>Собрать ZIP из выбранных файлов</button>
-<p id="status">Ожидаю список.</p>
+<button id="zip" disabled>Создать ZIP</button>
+<p id="status">Ожидаю TXT.</p>
 <div id="results"></div>
+
 <script>
 const $=id=>document.getElementById(id);
-let found=[];
+let available=[];
 
 $("search").onclick=async()=>{
- const songs=$("list").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
- if(!songs.length){$("status").textContent="Вставь список песен.";return;}
- found=[];
+ const file=$("file").files[0];
+ if(!file){$("status").textContent="Сначала выбери TXT.";return;}
+ const songs=(await file.text()).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ available=[];
  $("results").replaceChildren();
  $("zip").disabled=true;
 
  for(let i=0;i<songs.length;i++){
-  $("status").textContent=`Поиск ${i+1}/${songs.length}: ${songs[i]}`;
-  const card=document.createElement("div");
-  card.className="card";
-  const title=document.createElement("strong");
-  title.textContent=songs[i];
-  card.append(title);
-  $("results").append(card);
+  const row=document.createElement("div");
+  row.className="item";
+  row.textContent=`${i+1}/${songs.length}: ${songs[i]} — поиск…`;
+  $("results").append(row);
+  $("status").textContent=`Обработано ${i}/${songs.length}`;
 
   try{
-   const endpoint="https://bakha.me/?search="+encodeURIComponent(songs[i]);
-   const response=await fetch(endpoint);
-   if(!response.ok)throw Error("HTTP "+response.status);
-   const data=await response.json();
-   const tracks=(data.songs||[]).filter(t=>t.download);
+   const q=encodeURIComponent('title:"'+songs[i]+'" AND mediatype:audio');
+   const url=`https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier,title,creator&rows=5&page=1&output=json`;
+   const res=await fetch(url);
+   if(!res.ok)throw Error("HTTP "+res.status);
+   const data=await res.json();
+   const docs=data.response?.docs||[];
 
-   if(!tracks.length){
-    card.append(document.createTextNode(" — совпадений нет"));
+   if(!docs.length){
+    row.textContent=`${i+1}. ${songs[i]} — не найдено`;
     continue;
    }
 
-   tracks.slice(0,3).forEach(t=>{
-    const p=document.createElement("p");
+   row.replaceChildren();
+   const title=document.createElement("div");
+   title.textContent=`${i+1}. ${songs[i]}`;
+   row.append(title);
+
+   docs.forEach(doc=>{
     const a=document.createElement("a");
-    a.href=t.link||t.download;
+    a.href="https://archive.org/details/"+encodeURIComponent(doc.identifier);
     a.target="_blank";
     a.rel="noopener noreferrer";
-    a.textContent=(t.artist||"Неизвестный исполнитель")+" — "+
-      (t.title||"Без названия")+" ("+(t.duration||"?")+")";
-    p.append(a);
-    card.append(p);
-    const d=document.createElement("p");
-    const dl=document.createElement("a");
-    dl.href=t.download;
-    dl.target="_blank";
-    dl.rel="noopener noreferrer";
-    dl.textContent="Открыть ссылку аудио";
-    d.append(dl);
-    card.append(d);
-    found.push({requested:songs[i],title:t.title,artist:t.artist,
-      duration:t.duration,url:t.download});
+    a.textContent="Открыть: "+(doc.title||doc.identifier);
+    a.style.display="block";
+    a.style.color="#bcb2ff";
+    row.append(a);
+    available.push({requested:songs[i],identifier:doc.identifier});
    });
   }catch(e){
-   card.append(document.createTextNode(
-    " — поиск недоступен: "+e.message+
-    ". Возможно, браузер блокирует запрос (CORS)."
-   ));
+   row.textContent=`${i+1}. ${songs[i]} — ошибка поиска: ${e.message}`;
   }
-  await new Promise(resolve=>setTimeout(resolve,350));
+  await new Promise(r=>setTimeout(r,250));
  }
- $("status").textContent=`Поиск завершён. Найдено вариантов: ${found.length}. Проверь версии перед скачиванием.`;
- $("zip").disabled=found.length===0;
+ $("status").textContent=`Поиск завершён. Найдено материалов: ${available.length}. Проверь содержимое и условия скачивания каждого материала.`;
+ $("zip").disabled=available.length===0;
 };
 
-$("zip").onclick=async()=>{
- $("status").textContent=
- "Автоматическая загрузка внешних MP3 может быть заблокирована браузером или источником. Открой ссылки аудио и скачай разрешённые файлы в «Файлы», затем используй локальную сборку ZIP.";
+$("zip").onclick=()=>{
+ $("status").textContent="Перед сборкой ZIP нужно проверить метаданные каждого материала и разрешённые аудиофайлы. Открывай найденные материалы и скачивай только файлы, доступные для такого использования.";
 };
 </script>
 </main>
