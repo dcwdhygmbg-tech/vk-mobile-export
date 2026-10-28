@@ -1,0 +1,110 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VK Music — экспорт списка</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: #111318;
+      color: #f1f3f5;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    main { max-width: 650px; margin: auto; }
+    h1 { font-size: 25px; }
+    p { color: #b5bac5; line-height: 1.5; }
+    textarea, input {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0 14px;
+      border: 1px solid #414653;
+      border-radius: 12px;
+      background: #1c2028;
+      color: white;
+      font: inherit;
+    }
+    textarea { min-height: 240px; resize: vertical; }
+    button {
+      width: 100%;
+      padding: 15px;
+      margin: 5px 0 12px;
+      border: 0;
+      border-radius: 12px;
+      background: #5181b8;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    #status { white-space: pre-wrap; }
+    .hint { font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🎵 VK Music Export</h1>
+  <p>Подготовь список своих песен и сохрани его в TXT
+     в формате «Исполнитель — Название».</p>
+
+  <label for="vkurl">Ссылка на музыку VK (для справки)</label>
+  <input id="vkurl" type="url"
+    value="https://m.vk.ru/audios321266498?section=my"
+    placeholder="Вставь ссылку на свою музыку">
+
+  <p class="hint">
+    Ссылка сама по себе не загружает песни. Вставь ниже
+    скопированный текст списка или названия треков.
+  </p>
+
+  <label for="tracks">Список песен</label>
+  <textarea id="tracks"
+    placeholder="Например:
+Кино — Группа крови
+Noize MC — Вселенная бесконечна?"></textarea>
+
+  <button id="export">Скачать TXT</button>
+  <button id="clear">Очистить список</button>
+  <p id="status" role="status"></p>
+</main>
+
+<script>
+  const tracks = document.getElementById('tracks');
+  const status = document.getElementById('status');
+
+  document.getElementById('export').addEventListener('click', () => {
+    const lines = tracks.value
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    if (!lines.length) {
+      status.textContent = 'Сначала вставь список песен в поле выше.';
+      return;
+    }
+
+    const blob = new Blob(
+      ['\uFEFF' + lines.join('\n') + '\n'],
+      { type: 'text/plain;charset=utf-8' }
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vk-music-list.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+    status.textContent = 'Подготовлено строк: ' + lines.length;
+  });
+
+  document.getElementById('clear').addEventListener('click', () => {
+    tracks.value = '';
+    status.textContent = 'Поле очищено.';
+  });
+</script>
+</body>
+</html>
