@@ -4,142 +4,68 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Music Finder — оригиналы</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<title>HitMoz Music Queue</title>
 <style>
-:root{color-scheme:dark}
-body{margin:0;padding:18px;background:#101114;color:#f4f4f5;
-font:16px -apple-system,BlinkMacSystemFont,sans-serif}
-main{max-width:760px;margin:auto}
-h1{font-size:25px}
-p{color:#b9bbc5;line-height:1.5}
-.panel{background:#1c1d23;border:1px solid #343640;
-border-radius:15px;padding:15px;margin:14px 0}
-button,.btn{display:inline-block;background:#7464ed;color:white;
-border:0;border-radius:10px;padding:12px 14px;margin:5px 3px;
-font-size:15px;text-decoration:none;cursor:pointer}
-button:disabled{opacity:.4}
-input,textarea,select{box-sizing:border-box;width:100%;margin:8px 0;
-padding:12px;background:#111217;color:white;border:1px solid #454650;
-border-radius:9px;font-size:16px}
-textarea{min-height:130px}
-.small{font-size:13px;color:#a9aab5}
-.status{white-space:pre-wrap;overflow-wrap:anywhere}
-.track{border-top:1px solid #383942;padding:12px 0}
-.track strong{display:block;margin-bottom:6px}
-.tag{font-size:12px;color:#c4baff}
+body{margin:0;padding:18px;background:#111217;color:#f5f5f7;
+font:16px -apple-system,sans-serif}
+main{max-width:720px;margin:auto}
+textarea,input{box-sizing:border-box;width:100%;padding:12px;
+margin:8px 0;background:#202127;color:white;border:1px solid #454650;
+border-radius:10px;font-size:16px}
+textarea{min-height:180px}
+button,a{display:inline-block;padding:12px;margin:4px 2px;
+background:#7667ee;color:white;border:0;border-radius:9px;
+text-decoration:none;font-size:15px}
+.item{padding:12px 0;border-bottom:1px solid #41414b}
+small{color:#b9bac5}
 </style>
 </head>
 <body>
 <main>
-<h1>🎧 Music Finder</h1>
-<p>Обработка списка песен на iPhone. Поиск оригинальных версий,
-проверка совпадений и сборка ZIP из разрешённых аудиофайлов.</p>
-
-<div class="panel">
-<h3>1. Список песен</h3>
-<input id="file" type="file" accept=".txt,text/plain">
-<textarea id="songs" placeholder="EMIN, JONY — Камин&#10;Miyagi — Captain"></textarea>
-<button id="load">Загрузить TXT</button>
-<button id="start">Обработать список</button>
-<div id="status" class="status small">Ожидаю список песен.</div>
-</div>
-
-<div class="panel">
-<h3>2. Результаты поиска</h3>
-<p class="small">Поиск открывается отдельно. Проверяй исполнителя,
-название и наличие Explicit/Uncensored или пометки о цензуре.
-Автоматически подтверждать оригинальность по одному названию нельзя.</p>
+<h2>🎵 HitMoz — очередь песен</h2>
+<p>Вставь песни по одной на строку. Для каждого названия
+будет подготовлена ссылка поиска.</p>
+<textarea id="list" placeholder="EMIN, JONY — Камин&#10;Miyagi — Captain"></textarea>
+<button id="run">Обработать список</button>
+<p id="status"></p>
 <div id="results"></div>
-</div>
-
-<div class="panel">
-<h3>3. ZIP</h3>
-<p class="small">Можно добавить аудиофайлы, которые ты уже скачал
-и вправе архивировать. Выбор файла на iPhone выполняется вручную.</p>
-<input id="audio" type="file" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus" multiple>
-<button id="zip">Создать ZIP из выбранных файлов</button>
-<div id="zipstatus" class="small"></div>
-</div>
-</main>
-
 <script>
 const $=id=>document.getElementById(id);
-let tracks=[];
-let current=0;
+let songs=[];
+let index=0;
 
-$("load").onclick=async()=>{
- const f=$("file").files[0];
- if(!f){$("status").textContent="Сначала выбери TXT-файл.";return;}
- $("songs").value=await f.text();
- $("status").textContent="TXT загружен.";
+$("run").onclick=()=>{
+ songs=$("list").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ index=0;
+ $("results").replaceChildren();
+ next();
 };
 
-$("start").onclick=()=>{
- tracks=$("songs").value.split(/\r?\n/)
- .map(s=>s.trim()).filter(Boolean)
- .map((name,i)=>({name,i}));
- current=0;
- render();
- $("status").textContent=`В списке песен: ${tracks.length}`;
- if(!tracks.length)$("status").textContent="Список пуст.";
-};
-
-function searchLinks(name){
- const q=encodeURIComponent(name);
- return [
-  {label:"Поиск в VK",url:"https://vk.com/search?c[q]="+q+"&c[section]=audio"},
-  {label:"Поиск в интернете",url:"https://www.google.com/search?q="+q+"+original+explicit+audio"},
-  {label:"Поиск на Zaycev",url:"https://zaycev.net/search.html?query="+q}
- ];
-}
-
-function render(){
- const root=$("results");
- root.innerHTML="";
- if(!tracks.length){root.textContent="Загрузи список и нажми «Обработать список».";return;}
- tracks.forEach((t,i)=>{
-  const div=document.createElement("div");
-  div.className="track";
-  const title=document.createElement("strong");
-  title.textContent=(i+1)+". "+t.name;
-  div.appendChild(title);
-  const tag=document.createElement("div");
-  tag.className="tag";
-  tag.textContent="Статус: требуется проверка версии";
-  div.appendChild(tag);
-  searchLinks(t.name).forEach(link=>{
-   const a=document.createElement("a");
-   a.className="btn";a.textContent=link.label;
-   a.href=link.url;a.target="_blank";a.rel="noopener noreferrer";
-   div.appendChild(a);
-  });
-  root.appendChild(div);
- });
-}
-
-$("zip").onclick=async()=>{
- const files=[...$("audio").files];
- if(!files.length){$("zipstatus").textContent="Сначала выбери скачанные аудиофайлы.";return;}
- if(!window.JSZip){$("zipstatus").textContent="Не удалось загрузить ZIP-библиотеку. Проверь интернет.";return;}
- $("zipstatus").textContent="Создаю архив…";
- try{
-  const zip=new JSZip();
-  files.forEach((f,i)=>{
-   const safe=f.name.replace(/[\\/:*?"<>|]/g,"_");
-   zip.file(String(i+1).padStart(3,"0")+" - "+safe,f);
-  });
-  const blob=await zip.generateAsync({type:"blob"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;a.download="music-collection.zip";
-  document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
-  $("zipstatus").textContent=`Готово: ${files.length} файлов в ZIP.`;
- }catch(e){
-  $("zipstatus").textContent="Ошибка создания ZIP: "+e.message;
+function next(){
+ if(index>=songs.length){
+  $("status").textContent="Обработано названий: "+songs.length;
+  return;
  }
-};
+ const name=songs[index];
+ $("status").textContent=`Песня ${index+1} из ${songs.length}`;
+ const row=document.createElement("div");
+ row.className="item";
+ const title=document.createElement("div");
+ title.textContent=`${index+1}. ${name}`;
+ row.append(title);
+ const a=document.createElement("a");
+ a.href="https://eu.hitmoz.com/search?q="+encodeURIComponent(name);
+ a.target="_blank";
+ a.rel="noopener noreferrer";
+ a.textContent="Открыть поиск HitMoz";
+ row.append(a);
+ const done=document.createElement("button");
+ done.textContent="Следующая песня";
+ done.onclick=()=>{index++;next();};
+ row.append(done);
+ $("results").append(row);
+}
 </script>
+</main>
 </body>
 </html>
